@@ -8,9 +8,22 @@ import {
 import { getStore }
 from "./qdrant.js";
 
+console.log(
+  "GEMINI KEY EXISTS:",
+  !!process.env.GEMINI_API_KEY
+);
+
+console.log(
+  "KEY PREFIX:",
+  process.env.GEMINI_API_KEY?.slice(
+    0,
+    10
+  )
+);
+
 const llm =
   new ChatGoogleGenerativeAI({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-flash", // Restored: this was the working model
     apiKey:
       process.env.GEMINI_API_KEY,
   });
@@ -20,6 +33,11 @@ const chatHistory = [];
 export async function askRag(
   question
 ) {
+
+  console.log(
+    "askRag called with:",
+    question
+  );
 
   const store =
     await getStore();
@@ -33,6 +51,11 @@ export async function askRag(
     await retriever.invoke(
       question
     );
+
+  console.log(
+    "Retrieved docs count:",
+    retrievedDocs.length
+  );
 
   const videoADocs =
     retrievedDocs.filter(
@@ -109,12 +132,42 @@ Instructions:
 - Answer the exact question first.
 - Then provide reasoning.
 - If comparison is requested, compare both videos.
-- Sound like ChatGPT, not an analytics report.`;
+- Sound like ChatGPT, not an analytics report.
+`;
 
-  const response =
-    await llm.invoke(
-      prompt
+  let response;
+
+  try {
+
+    console.log(
+      "Invoking LLM..."
     );
+
+    response =
+      await llm.invoke(
+        prompt
+      );
+
+    console.log(
+      "LLM response received:",
+      !!response?.content
+    );
+
+  } catch (err) {
+
+    console.error(
+      "LLM ERROR:",
+      err
+    );
+
+    return {
+
+      answer: `Gemini API error: ${err.message}`,
+
+      docs:
+        retrievedDocs,
+    };
+  }
 
   chatHistory.push({
     role: "assistant",
@@ -125,7 +178,6 @@ Instructions:
   return {
     answer:
       response.content,
-
     docs:
       retrievedDocs,
   };
