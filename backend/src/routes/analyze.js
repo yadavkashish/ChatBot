@@ -1,4 +1,5 @@
 import express from "express";
+import { v4 as uuidv4 } from "uuid"; 
 import { getTranscript } from "../services/transcript.js";
 import { getYoutubeMetadata } from "../services/youtube.js";
 import { getInstagramMetadata } from "../services/instagram.js";
@@ -6,7 +7,7 @@ import { chunkText } from "../utils/chunker.js";
 import { getEngagementRate } from "../utils/engagement.js";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { embeddings } from "../services/embeddings.js";
-import { QdrantClient } from "@qdrant/js-client-rest";
+import { QdrantClient } from "@qdrant/js-client-rest"; 
 
 const router = express.Router();
 
@@ -17,6 +18,9 @@ function isYoutube(url) {
 router.post("/", async (req, res) => {
   try {
     const { videoA, videoB } = req.body;
+    
+    // 1. GENERATE UNIQUE SESSION ID
+    const sessionId = uuidv4(); 
 
     console.time("⏱️ ANALYSIS TOTAL TIME");
 
@@ -38,8 +42,8 @@ router.post("/", async (req, res) => {
       getTranscript(videoB),
     ]);
 
-    // Clean, short single-line summary instead of dumping raw objects
-    console.log(`🚀 Analyzing: [@${metadataA.creator} (${platformA})] vs [@${metadataB.creator} (${platformB})]`);
+    // Logging removed session ID
+    console.log(`🚀 Analyzing: [@${metadataA.creator}] vs [@${metadataB.creator}]`);
 
     // ==========================
     // Chunking
@@ -52,8 +56,10 @@ router.post("/", async (req, res) => {
     const engagementA = getEngagementRate(metadataA.views, metadataA.likes, metadataA.comments);
     const engagementB = getEngagementRate(metadataB.views, metadataB.likes, metadataB.comments);
 
+    // 2. ATTACH SESSION ID TO METADATA
     docsA.forEach((doc, index) => {
       doc.metadata = {
+        sessionId, 
         video_id: "A",
         platform: platformA,
         chunk: index + 1,
@@ -70,6 +76,7 @@ router.post("/", async (req, res) => {
 
     docsB.forEach((doc, index) => {
       doc.metadata = {
+        sessionId, 
         video_id: "B",
         platform: platformB,
         chunk: index + 1,
@@ -85,19 +92,8 @@ router.post("/", async (req, res) => {
     });
 
     // ==========================
-    // Vector Database Clean & Insert
+    // Vector Database Insert 
     // ==========================
-    const qdrantClient = new QdrantClient({
-      url: process.env.QDRANT_URL,
-      apiKey: process.env.QDRANT_API_KEY,
-    });
-
-    try {
-      await qdrantClient.deleteCollection("creator-analysis");
-    } catch (e) {
-      // Fail silently if collection doesn't exist yet
-    }
-
     await QdrantVectorStore.fromDocuments(
       [...docsA, ...docsB],
       embeddings,
@@ -108,32 +104,40 @@ router.post("/", async (req, res) => {
       }
     );
 
-    console.log(`💾 Sync Complete: Vectorized ${docsA.length + docsB.length} total chunks.`);
+    const qdrantClient = new QdrantClient({
+      url: process.env.QDRANT_URL,
+      apiKey: process.env.QDRANT_API_KEY,
+    });
 
-    // ==========================
-    // Global Metadata
-    // ==========================
-    global.videoAnalysis = {
-      A: {
-        ...metadataA,
-        platform: platformA,
-        followers: metadataA.followers || metadataA.subscribers || 0,
-        engagementRate: engagementA,
-      },
-      B: {
-        ...metadataB,
-        platform: platformB,
-        followers: metadataB.followers || metadataB.subscribers || 0,
-        engagementRate: engagementB,
-      },
-    };
+    try {
+      await qdrantClient.createPayloadIndex("creator-analysis", {
+        field_name: "metadata.sessionId",
+        field_schema: "keyword",
+      });
+      console.log("✅ Qdrant Index verified for session data");
+    } catch (e) {
+      // Qdrant throws an error if the index already exists, so we safely ignore it
+    }
+
+    // Logging removed session ID
+    console.log(`💾 Sync Complete: Vectorized ${docsA.length + docsB.length} chunks.`);
 
     console.timeEnd("⏱️ ANALYSIS TOTAL TIME");
 
+    // 3. SEND SESSION ID TO FRONTEND
     res.json({
       success: true,
-      videoA: global.videoAnalysis.A,
-      videoB: global.videoAnalysis.B,
+      sessionId: sessionId, 
+      videoA: {
+        ...metadataA,
+        platform: platformA,
+        engagementRate: engagementA,
+      },
+      videoB: {
+        ...metadataB,
+        platform: platformB,
+        engagementRate: engagementB,
+      },
     });
 
   } catch (error) {
