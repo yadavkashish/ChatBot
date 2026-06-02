@@ -8,9 +8,16 @@ import chatRoute from "./src/routes/chat.js";
 
 const app = express();
 
+// Define your allowed origins
+const allowedOrigins = [
+  "https://chat-bot-beta-liart.vercel.app", // Production
+  "http://localhost:3000",                  // Local dev (React/Next)
+  "http://localhost:5173"                   // Local dev (Vite)
+];
+
 app.use(
   cors({
-    origin: "https://chat-bot-beta-liart.vercel.app",
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
