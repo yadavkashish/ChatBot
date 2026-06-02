@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { askQuestion } from "../services/api";
-import ChatMessage from "./ChatMessage"; // Make sure to import your ChatMessage component
+import ChatMessage from "./ChatMessage";
 
-export default function ChatPanel() {
+// 👈 Accept sessionId as a prop!
+export default function ChatPanel({ sessionId }) {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Ref for auto-scrolling to the bottom of the chat
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -18,13 +18,14 @@ export default function ChatPanel() {
   }, [messages, isOpen]);
 
   const sendMessage = async (e) => {
-    e?.preventDefault(); // Prevent form submission reload
-    if (!question.trim() || isLoading) return;
+    e?.preventDefault(); 
+    
+    // 👈 Don't send if no sessionId exists
+    if (!question.trim() || isLoading || !sessionId) return;
 
     const currentQuestion = question.trim();
     setQuestion("");
     
-    // Add user message
     setMessages((prev) => [
       ...prev,
       { role: "user", text: currentQuestion }
@@ -33,9 +34,9 @@ export default function ChatPanel() {
     setIsLoading(true);
 
     try {
-      const result = await askQuestion(currentQuestion);
+      // 👈 Pass sessionId to the API
+      const result = await askQuestion(currentQuestion, sessionId);
       
-      // Add AI response
       setMessages((prev) => [
         ...prev,
         {
@@ -58,11 +59,9 @@ export default function ChatPanel() {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end font-sans">
       
-      {/* CHAT WINDOW */}
       {isOpen && (
         <div className="bg-zinc-900 border border-zinc-800 shadow-2xl rounded-2xl w-[350px] sm:w-[400px] h-[550px] flex flex-col mb-4 overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300">
           
-          {/* Header */}
           <div className="bg-zinc-950 p-4 border-b border-zinc-800 flex justify-between items-center shadow-sm">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
@@ -78,14 +77,18 @@ export default function ChatPanel() {
             </button>
           </div>
 
-          {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 bg-zinc-900/50">
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-3">
+              <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-3 text-center px-4">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-50">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                <p className="text-sm">Ask me anything about the analysis!</p>
+                {/* 👈 Helpful message if they open chat too early */}
+                <p className="text-sm">
+                  {sessionId 
+                    ? "Ask me anything about the analysis!" 
+                    : "Please analyze two videos first to start a chat."}
+                </p>
               </div>
             ) : (
               messages.map((message, index) => (
@@ -98,7 +101,6 @@ export default function ChatPanel() {
               ))
             )}
             
-            {/* Loading indicator */}
             {isLoading && (
               <div className="flex justify-start mb-4">
                 <div className="bg-zinc-800 rounded-xl p-4 flex gap-1.5 items-center">
@@ -111,20 +113,19 @@ export default function ChatPanel() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
           <div className="p-4 bg-zinc-950 border-t border-zinc-800">
             <form onSubmit={sendMessage} className="flex gap-2">
               <input
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Type your message..."
-                disabled={isLoading}
-                className="flex-1 p-3 rounded-xl bg-zinc-800 border border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-500 disabled:opacity-50"
+                placeholder={sessionId ? "Type your message..." : "Analyze videos first..."}
+                disabled={isLoading || !sessionId} // 👈 Disable if no session
+                className="flex-1 p-3 rounded-xl bg-zinc-800 border border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="submit"
-                disabled={isLoading || !question.trim()}
-                className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 rounded-xl font-medium transition-colors flex items-center justify-center"
+                disabled={isLoading || !question.trim() || !sessionId} // 👈 Disable if no session
+                className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 rounded-xl font-medium transition-colors flex items-center justify-center disabled:cursor-not-allowed"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -136,7 +137,6 @@ export default function ChatPanel() {
         </div>
       )}
 
-      {/* FLOATING TOGGLE BUTTON */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}

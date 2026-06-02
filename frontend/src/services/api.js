@@ -1,7 +1,5 @@
 import axios from "axios";
 
-// Securely pull the backend URL from your .env file
-// Make sure to add VITE_API_URL=https://your-production-url.com in your .env
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const API = `${BASE_URL}/api`;
 
@@ -10,21 +8,20 @@ export async function analyzeVideos(videoA, videoB) {
     videoA,
     videoB,
   });
-
   return res.data;
 }
 
-// Legacy non-streaming
-export async function askQuestion(question) {
+// 👈 Updated to accept sessionId
+export async function askQuestion(question, sessionId) {
   const res = await axios.post(`${API}/chat`, {
     question,
+    sessionId, // 👈 Send to backend
   });
-
   return res.data;
 }
 
-// Streaming version
-export async function streamQuestion(question, onChunk, onDone) {
+// 👈 Updated to accept sessionId
+export async function streamQuestion(question, sessionId, onChunk, onDone) {
   const response = await fetch(`${API}/chat`, {
     method: "POST",
     headers: {
@@ -32,6 +29,7 @@ export async function streamQuestion(question, onChunk, onDone) {
     },
     body: JSON.stringify({
       question,
+      sessionId, // 👈 Send to backend
     }),
   });
 
@@ -41,22 +39,16 @@ export async function streamQuestion(question, onChunk, onDone) {
 
   while (true) {
     const { done, value } = await reader.read();
-
     if (done) break;
 
-    buffer += decoder.decode(value, {
-      stream: true,
-    });
-
+    buffer += decoder.decode(value, { stream: true });
     const events = buffer.split("\n\n");
     buffer = events.pop() || "";
 
     for (const event of events) {
       if (!event.startsWith("data:")) continue;
-
       try {
         const data = JSON.parse(event.replace("data:", ""));
-
         if (data.done) {
           onDone?.(data.sources);
         } else if (data.content) {

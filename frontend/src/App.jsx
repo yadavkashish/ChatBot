@@ -16,7 +16,6 @@ function LoadingStepper() {
     return () => clearInterval(timer);
   }, []);
 
-  // Calculate the width of the connecting line
   const progressWidth = `${(currentStep / (steps.length - 1)) * 100}%`;
 
   return (
@@ -30,19 +29,13 @@ function LoadingStepper() {
         <p className="text-zinc-500 text-sm">Please wait patiently while we crunch the numbers.</p>
       </div>
       
-      {/* Horizontal Stepper Container */}
       <div className="relative flex justify-between items-center w-full px-2 md:px-8">
-        
-        {/* Background Line */}
         <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-zinc-800 rounded-full z-0"></div>
-        
-        {/* Active Progress Line */}
         <div 
           className="absolute left-6 top-1/2 -translate-y-1/2 h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full z-0 transition-all duration-700 ease-in-out"
           style={{ width: `calc(${progressWidth} - 3rem)` }} 
         ></div>
 
-        {/* Step Circles */}
         {steps.map((step, index) => {
           const isActive = index === currentStep;
           const isCompleted = index < currentStep;
@@ -75,7 +68,7 @@ function LoadingStepper() {
           );
         })}
       </div>
-      <div className="h-8"></div> {/* Spacer for the absolute positioned text */}
+      <div className="h-8"></div>
     </div>
   );
 }
@@ -85,8 +78,8 @@ function ComparisonBar({
   label,
   a,
   b,
-  colorA = "bg-red-500", // YouTube Red
-  colorB = "bg-fuchsia-500", // Instagram Pink
+  colorA = "bg-red-500", 
+  colorB = "bg-fuchsia-500", 
 }) {
   const max = Math.max(a || 0, b || 0, 1);
   const percentA = ((a || 0) / max) * 100;
@@ -107,14 +100,12 @@ function ComparisonBar({
       </div>
 
       <div className="space-y-2">
-        {/* YouTube Bar */}
         <div className="w-full bg-zinc-800/50 rounded-full h-2.5 overflow-hidden border border-zinc-800">
           <div
             className={`${colorA} h-full rounded-full transition-all duration-1000 ease-out`}
             style={{ width: `${percentA}%` }}
           />
         </div>
-        {/* Instagram Bar */}
         <div className="w-full bg-zinc-800/50 rounded-full h-2.5 overflow-hidden border border-zinc-800">
           <div
             className={`${colorB} h-full rounded-full transition-all duration-1000 ease-out`}
@@ -129,7 +120,9 @@ function ComparisonBar({
 // --- MAIN APP COMPONENT ---
 function App() {
   const [analysis, setAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false); // New state for loading
+  const [isAnalyzing, setIsAnalyzing] = useState(false); 
+  // 👈 NEW: State to hold the session ID!
+  const [sessionId, setSessionId] = useState(null); 
 
   const yt = analysis?.metadataA || analysis?.videoA;
   const ig = analysis?.metadataB || analysis?.videoB;
@@ -142,14 +135,18 @@ function App() {
 
   const winner = youtubeScore > instagramScore ? "YouTube" : "Instagram";
 
-  // New handler functions to manage state
   const handleAnalyzeStart = () => {
     setIsAnalyzing(true);
-    setAnalysis(null); // Clear previous results while loading
+    setAnalysis(null); 
+    setSessionId(null); // Clear old session ID
   };
 
   const handleAnalyzeComplete = (data) => {
     setAnalysis(data);
+    // 👈 NEW: Save the session ID returned from the backend!
+    if (data.sessionId) {
+      setSessionId(data.sessionId);
+    }
     setIsAnalyzing(false);
   };
 
@@ -157,7 +154,6 @@ function App() {
     <div className="min-h-screen bg-zinc-950 text-zinc-50 p-4 md:p-8 font-sans selection:bg-indigo-500/30">
       <main className="max-w-6xl mx-auto">
         
-        {/* HEADER */}
         <header className="mb-10 text-center space-y-2">
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 to-zinc-500">
             Cross Platform Analyzer
@@ -166,19 +162,16 @@ function App() {
         </header>
 
         <div className="max-w-3xl mx-auto mb-12">
-          {/* Update VideoInput to use the new handlers */}
           <VideoInput 
             onAnalyzeStart={handleAnalyzeStart} 
             onAnalyze={handleAnalyzeComplete} 
           />
         </div>
 
-        {/* SHOW LOADING STEPPER */}
         {isAnalyzing && !analysis && (
           <LoadingStepper />
         )}
 
-        {/* SHOW RESULTS */}
         {analysis && !isAnalyzing && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
             
@@ -278,13 +271,14 @@ function App() {
             </div>
 
             {/* CHAT PANEL */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-1 shadow-lg mt-8">
-              <ChatPanel />
-            </div>
-            
+            {/* We don't render it in the middle of the screen anymore since it's a fixed popup bottom-right */}
           </div>
         )}
       </main>
+
+      {/* 👈 NEW: Render ChatPanel globally and pass the sessionId down! */}
+      <ChatPanel sessionId={sessionId} />
+      
     </div>
   );
 }
