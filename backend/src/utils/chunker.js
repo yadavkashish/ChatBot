@@ -15,8 +15,8 @@ export async function chunkText(
 
   const splitter =
     new RecursiveCharacterTextSplitter({
-      chunkSize: 2500,
-      chunkOverlap: 200,
+      chunkSize: 1500,
+      chunkOverlap: 150,
     });
 
   return await splitter.createDocuments([

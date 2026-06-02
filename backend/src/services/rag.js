@@ -8,6 +8,8 @@ import {
 import { getStore }
 from "./qdrant.js";
 
+import { Redis } from "@upstash/redis";
+
 console.log(
   "GEMINI KEY EXISTS:",
   !!process.env.GEMINI_API_KEY
@@ -28,10 +30,12 @@ const llm =
       process.env.GEMINI_API_KEY,
   });
 
-const chatHistory = [];
+// Initialize Upstash Redis
+const redis = Redis.fromEnv();
 
 export async function askRag(
-  question
+  question,
+  sessionId
 ) {
 
   const store =
@@ -40,6 +44,16 @@ export async function askRag(
   const retriever =
     store.asRetriever({
       k: 20,
+      filter: {
+        must: [
+          {
+            key: "metadata.sessionId",
+            match: {
+              value: sessionId,
+            },
+          },
+        ],
+      },
     });
 
   const retrievedDocs =
@@ -84,6 +98,14 @@ export async function askRag(
         doc => doc.pageContent
       )
       .join("\n\n");
+
+  // ==========================
+  // Redis Chat History 
+  // ==========================
+  const redisKey = `chat:${sessionId}`;
+  
+  // Fetch existing chat history from Redis (or default to empty array)
+  let chatHistory = await redis.get(redisKey) || [];
 
   chatHistory.push({
     role: "user",
@@ -163,6 +185,14 @@ ${question}
     content:
       response.content,
   });
+
+  // Keep only the 10 most recent messages (5 questions, 5 answers) to save Redis space & stay in free tier limits
+  if (chatHistory.length > 10) {
+    chatHistory = chatHistory.slice(-10);
+  }
+
+  // Save the updated history back to Redis with a 24-hour expiration
+  await redis.set(redisKey, chatHistory, { ex: 86400 });
 
   return {
     answer:
