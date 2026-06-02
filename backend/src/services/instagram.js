@@ -23,7 +23,7 @@ function emptyMetadata() {
     likes: 0,
     comments: 0,
     views: 0,
-    duration: "N/A", // Updated to fallback gracefully
+    duration: "N/A", 
     uploadDate: null,
     caption: "",
     hashtags: [],
@@ -39,11 +39,9 @@ function extractShortcode(url) {
   return match[1];
 }
 
-// Helper function to format duration cleanly
 function formatInstagramDuration(rawDuration) {
   let totalSeconds = Number(rawDuration) || 0;
 
-  // Convert milliseconds to seconds if the API returns them
   if (totalSeconds > 10000) {
     totalSeconds = totalSeconds / 1000;
   }
@@ -92,9 +90,6 @@ export async function getInstagramMetadata(reelUrl) {
 
     const media = mediaResponse.data?.[0];
     if (!media) throw new Error("No media found");
-
-    // UNCOMMENT THIS LINE if it still says N/A, so you can see exactly what the API is sending:
-    // console.log("RAW INSTA DATA:", JSON.stringify(media, null, 2));
 
     const username = media?.meta?.username || "Unknown";
     let followers = 0;
@@ -149,7 +144,6 @@ export async function getInstagramMetadata(reelUrl) {
     const caption = media?.meta?.title || "";
     const hashtags = caption.match(/#\w+/g) || [];
     
-    // THE WIDE NET: Checking every common place the duration is hidden
     const rawDuration = 
       media?.video_duration || 
       media?.videoDuration || 
@@ -163,13 +157,22 @@ export async function getInstagramMetadata(reelUrl) {
 
     const finalDuration = rawDuration ? formatInstagramDuration(rawDuration) : "N/A";
 
+    // The Wide Net for views
+    const finalViews = views || 
+      media?.play_count || 
+      media?.view_count || 
+      media?.video_view_count || 
+      media?.meta?.viewCount || 
+      media?.meta?.playCount || 
+      0;
+
     return {
       creator: username,
       followers,
-      likes: media?.meta?.likeCount || 0,
-      comments: media?.meta?.commentCount || 0,
-      views: views || media?.meta?.viewCount || media?.meta?.playCount || 0,
-      duration: finalDuration, // Uses the safely extracted value
+      likes: media?.like_count || media?.meta?.likeCount || 0,
+      comments: media?.comment_count || media?.meta?.commentCount || 0,
+      views: finalViews, 
+      duration: finalDuration, 
       uploadDate: media?.meta?.takenAt ? new Date(media.meta.takenAt * 1000).toISOString() : null,
       caption,
       hashtags,

@@ -42,7 +42,6 @@ router.post("/", async (req, res) => {
       getTranscript(videoB),
     ]);
 
-    // Logging removed session ID
     console.log(`🚀 Analyzing: [@${metadataA.creator}] vs [@${metadataB.creator}]`);
 
     // ==========================
@@ -116,25 +115,26 @@ router.post("/", async (req, res) => {
       });
       console.log("✅ Qdrant Index verified for session data");
     } catch (e) {
-      // Qdrant throws an error if the index already exists, so we safely ignore it
+      // Safely ignore if the index already exists
     }
 
-    // Logging removed session ID
     console.log(`💾 Sync Complete: Vectorized ${docsA.length + docsB.length} chunks.`);
 
     console.timeEnd("⏱️ ANALYSIS TOTAL TIME");
 
-    // 3. SEND SESSION ID TO FRONTEND
+    // 3. SEND SESSION ID & MAPPED DATA TO FRONTEND
     res.json({
       success: true,
       sessionId: sessionId, 
       videoA: {
         ...metadataA,
+        followers: metadataA.followers || metadataA.subscribers || 0, // Mapped for React
         platform: platformA,
         engagementRate: engagementA,
       },
       videoB: {
         ...metadataB,
+        followers: metadataB.followers || metadataB.subscribers || 0, // Mapped for React
         platform: platformB,
         engagementRate: engagementB,
       },
