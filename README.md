@@ -9,7 +9,6 @@ More importantly, it features a multi-tenant RAG (Retrieval-Augmented Generation
 I built this with a focus on speed, API resilience, and strict session isolation so multiple users can query the database simultaneously without data bleed.
 
 * **Parallel Fetching Pipeline:** The `/analyze` route resolves YouTube Data (official API), Instagram Data (RapidAPI proxy), and Transcripts concurrently to minimize TTFB (Time to First Byte).
-* **Asynchronous "Proxy Armor":** Instagram data is notoriously hard to scrape. The backend uses an aggressive Stale-While-Revalidate caching pattern. If secondary data (like follower counts) takes too long, the API returns the dashboard instantly and uses **BullMQ** and **Socket.io** to fetch the missing data in the background and push it to the client in real-time.
 * **Local Vector Embeddings:** Instead of paying for OpenAI embeddings, the backend runs `Xenova/all-MiniLM-L6-v2` entirely locally via `@xenova/transformers` (isolated in Node.js Worker Threads) to generate vectors for the transcripts without blocking the main event loop.
 * **Multi-Tenant Vector Storage:** Uses **Qdrant**. Every analysis generates a unique `sessionId` which is injected into the vector metadata. A Qdrant Payload Index ensures lightning-fast retrieval locked specifically to the user's active session.
 * **Context-Aware RAG:** Powered by `gemini-2.5-flash` and LangChain. 
@@ -18,7 +17,6 @@ I built this with a focus on speed, API resilience, and strict session isolation
 ## 💻 Tech Stack
 
 * **Framework:** Node.js + Express
-* **Real-time & Queues:** Socket.io, BullMQ
 * **LLM Orchestration:** LangChain (`@langchain/google-genai`, `@langchain/qdrant`)
 * **Embeddings:** HuggingFace Transformers (`@xenova/transformers`)
 * **Vector Database:** Qdrant Cloud
@@ -31,12 +29,10 @@ I built this with a focus on speed, API resilience, and strict session isolation
 When a user submits two URLs:
 1.  Generates a unique `sessionId`.
 2.  Fetches primary metadata and transcripts concurrently.
-3.  Dispatches background jobs (BullMQ) for heavy/flaky tasks (e.g., Instagram follower lookups).
-4.  Chunks the transcript text (1500 chars, 150 overlap).
-5.  Vectorizes the chunks locally using Xenova worker threads.
-6.  Pushes the vectors to Qdrant, tagged with the `sessionId` and payload indexed.
-7.  Returns the structured metadata and the `sessionId` to the React frontend instantly.
-8.  *WebSocket (`socket.io`)* pushes any delayed metadata updates to the frontend once BullMQ finishes.
+3.  Chunks the transcript text (1500 chars, 150 overlap).
+4.  Vectorizes the chunks locally using Xenova worker threads.
+5.  Pushes the vectors to Qdrant, tagged with the `sessionId` and payload indexed.
+6.  Returns the structured metadata and the `sessionId` to the React frontend instantly.
 
 ### 2. The Chat Flow (`POST /api/chat`)
 When a user asks a question:
@@ -70,8 +66,7 @@ QDRANT_API_KEY="your_qdrant_api_key"
 # REST API is for LangChain memory/chat history
 UPSTASH_REDIS_REST_URL="[https://your-upstash-endpoint.upstash.io](https://your-upstash-endpoint.upstash.io)"
 UPSTASH_REDIS_REST_TOKEN="your_upstash_token"
-# TCP URL is for BullMQ Background Workers (must use rediss://)
-UPSTASH_REDIS_URL="rediss://default:your-password@your-endpoint.upstash.io:32451"
+
 
 ## 🛠 Local Setup
 
