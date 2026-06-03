@@ -10,25 +10,13 @@ const headers = {
   "x-rapidapi-host": "instagram120.p.rapidapi.com",
 };
 
-// ----------------------------------
-// 1. In-Memory Cache Setup
-// ----------------------------------
 const creatorCache = new Map();
 const CACHE_TTL = 10 * 60 * 1000; 
 
 function emptyMetadata() {
   return {
-    creator: "Unknown",
-    followers: 0,
-    likes: 0,
-    comments: 0,
-    views: 0,
-    duration: "N/A", 
-    uploadDate: null,
-    caption: "",
-    hashtags: [],
-    videoUrl: "",
-    thumbnail: "",
+    creator: "Unknown", followers: 0, likes: 0, comments: 0, views: 0,
+    duration: "N/A", uploadDate: null, caption: "", hashtags: [], videoUrl: "", thumbnail: "",
   };
 }
 
@@ -41,32 +29,20 @@ function extractShortcode(url) {
 
 function formatInstagramDuration(rawDuration) {
   let totalSeconds = Number(rawDuration) || 0;
-
-  if (totalSeconds > 10000) {
-    totalSeconds = totalSeconds / 1000;
-  }
-
+  if (totalSeconds > 10000) totalSeconds = totalSeconds / 1000;
   totalSeconds = Math.floor(totalSeconds);
-  const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-// ----------------------------------
-// 2. Smart Fetch with Retry 
-// ----------------------------------
 async function fetchWithRetry(url, payload, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       return await axios.post(url, payload, { headers });
     } catch (error) {
       if (error.response?.status === 429 && i < retries - 1) {
-        const waitTime = Math.pow(2, i + 1) * 1000; 
+        const waitTime = Math.pow(2, i + 1) * 1000;
         console.warn(`[API 429] Rate limited. Retrying in ${waitTime}ms...`);
         await new Promise((res) => setTimeout(res, waitTime));
       } else {
@@ -76,13 +52,11 @@ async function fetchWithRetry(url, payload, retries = 3) {
   }
 }
 
-// ----------------------------------
-// 3. Main Fetch Function
-// ----------------------------------
 export async function getInstagramMetadata(reelUrl) {
   try {
     const shortcode = extractShortcode(reelUrl);
 
+    // 1. FAST CRITICAL CALL: Get direct media data first
     const mediaResponse = await fetchWithRetry(
       "https://instagram120.p.rapidapi.com/api/instagram/mediaByShortcode",
       { shortcode }
@@ -93,78 +67,67 @@ export async function getInstagramMetadata(reelUrl) {
 
     const username = media?.meta?.username || "Unknown";
     let followers = 0;
-    let views = 0;
+    let supplementalViews = 0;
     const now = Date.now();
 
-    // ----------------------------------
-    // 4. Cache Check vs API Fetch
-    // ----------------------------------
+    // 2. PARALLEL DECOUPLED FETCHING FOR SLOW METRICS
     if (creatorCache.has(username) && now - creatorCache.get(username).timestamp < CACHE_TTL) {
       const cached = creatorCache.get(username);
       followers = cached.followers;
-
       const matchingReel = cached.reels?.find((item) => item?.node?.media?.code === shortcode);
-      views = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
+      supplementalViews = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
     } else {
-      let reels = [];
+      // 👈 FIX 1: Bumped retries from 1 to 2
+      const [profileRes, reelsRes] = await Promise.allSettled([
+        fetchWithRetry("https://instagram120.p.rapidapi.com/api/instagram/profile", { username }, 2),
+        fetchWithRetry("https://instagram120.p.rapidapi.com/api/instagram/reels", { username, maxId: "" }, 2)
+      ]);
 
-      try {
-        const profileResponse = await fetchWithRetry(
-          "https://instagram120.p.rapidapi.com/api/instagram/profile",
-          { username },
-          1 
-        );
-        followers =
-          profileResponse.data?.result?.edge_followed_by?.count ||
-          profileResponse.data?.result?.follower_count ||
+      if (profileRes.status === "fulfilled") {
+        const pData = profileRes.value.data;
+        
+        // 👈 FIX 2: WIDE NET FOR FOLLOWERS
+        followers = 
+          pData?.result?.edge_followed_by?.count || 
+          pData?.result?.follower_count || 
+          pData?.data?.user?.edge_followed_by?.count || 
+          pData?.graphql?.user?.edge_followed_by?.count || 
+          pData?.follower_count || 
+          pData?.followers || 
           0;
-      } catch (err) {
-        // Silently fail to keep logs clean
+
+        // 👈 FIX 3: Safety log if it's still 0
+        if (followers === 0) {
+          console.warn(`⚠️ [IG API] Profile fetched, but followers is 0. Raw Data Snippet:`, JSON.stringify(pData).slice(0, 200));
+        }
+      } else {
+        console.warn(`❌ [IG API] Profile request failed entirely:`, profileRes.reason?.message);
       }
 
-      try {
-        const reelsResponse = await fetchWithRetry(
-          "https://instagram120.p.rapidapi.com/api/instagram/reels",
-          { username, maxId: "" },
-          1 
-        );
-        reels = reelsResponse.data?.result?.edges || [];
+      let reels = [];
+      if (reelsRes.status === "fulfilled") {
+        reels = reelsRes.value.data?.result?.edges || [];
         const matchingReel = reels.find((item) => item?.node?.media?.code === shortcode);
-        views = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
-      } catch (err) {
-         // Silently fail to keep logs clean
+        supplementalViews = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
       }
 
+      // Save valid data blocks to cache
       creatorCache.set(username, { followers, reels, timestamp: now });
     }
 
-    // ----------------------------------
-    // 5. Construct Final Payload
-    // ----------------------------------
+    // 3. WIDE-NET METRIC EXTRACTION
     const caption = media?.meta?.title || "";
     const hashtags = caption.match(/#\w+/g) || [];
     
-    const rawDuration = 
-      media?.video_duration || 
-      media?.videoDuration || 
-      media?.clips_metadata?.video_duration || 
-      media?.meta?.video_duration ||
-      media?.meta?.videoDuration || 
-      media?.meta?.duration || 
-      media?.items?.[0]?.video_duration || 
-      media?.items?.[0]?.client_cache_key?.duration ||
-      0;
+    const rawDuration = media?.video_duration || media?.videoDuration || media?.clips_metadata?.video_duration || 0;
 
-    const finalDuration = rawDuration ? formatInstagramDuration(rawDuration) : "N/A";
-
-    // The Wide Net for views
-    const finalViews = views || 
-      media?.play_count || 
-      media?.view_count || 
-      media?.video_view_count || 
-      media?.meta?.viewCount || 
-      media?.meta?.playCount || 
-      0;
+    // Prioritize any concrete view count discovered across payload variants
+    const finalViews = media?.play_count || 
+                       media?.view_count || 
+                       media?.video_view_count || 
+                       media?.meta?.viewCount || 
+                       media?.meta?.playCount || 
+                       supplementalViews || 0;
 
     return {
       creator: username,
@@ -172,7 +135,7 @@ export async function getInstagramMetadata(reelUrl) {
       likes: media?.like_count || media?.meta?.likeCount || 0,
       comments: media?.comment_count || media?.meta?.commentCount || 0,
       views: finalViews, 
-      duration: finalDuration, 
+      duration: rawDuration ? formatInstagramDuration(rawDuration) : "N/A", 
       uploadDate: media?.meta?.takenAt ? new Date(media.meta.takenAt * 1000).toISOString() : null,
       caption,
       hashtags,
@@ -180,27 +143,13 @@ export async function getInstagramMetadata(reelUrl) {
       thumbnail: media?.pictureUrl || "",
     };
   } catch (error) {
-    console.error(
-      "Instagram fetch error:",
-      error.response?.status,
-      error.response?.data || error.message
-    );
+    console.error("Instagram fetch error:", error.message);
     return emptyMetadata();
   }
 }
 
-// ----------------------------------
-// 6. Batch Processor 
-// ----------------------------------
 const limit = pLimit(3);
-
 export async function processInstagramBatch(urls) {
-  const promises = urls.map((url) =>
-    limit(async () => {
-      return await getInstagramMetadata(url);
-    })
-  );
-
-  const results = await Promise.all(promises);
-  return results;
+  const promises = urls.map((url) => limit(() => getInstagramMetadata(url)));
+  return Promise.all(promises);
 }
