@@ -77,7 +77,6 @@ export async function getInstagramMetadata(reelUrl) {
       const matchingReel = cached.reels?.find((item) => item?.node?.media?.code === shortcode);
       supplementalViews = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
     } else {
-      // 👈 FIX 1: Bumped retries from 1 to 2
       const [profileRes, reelsRes] = await Promise.allSettled([
         fetchWithRetry("https://instagram120.p.rapidapi.com/api/instagram/profile", { username }, 2),
         fetchWithRetry("https://instagram120.p.rapidapi.com/api/instagram/reels", { username, maxId: "" }, 2)
@@ -86,7 +85,6 @@ export async function getInstagramMetadata(reelUrl) {
       if (profileRes.status === "fulfilled") {
         const pData = profileRes.value.data;
         
-        // 👈 FIX 2: WIDE NET FOR FOLLOWERS
         followers = 
           pData?.result?.edge_followed_by?.count || 
           pData?.result?.follower_count || 
@@ -96,7 +94,6 @@ export async function getInstagramMetadata(reelUrl) {
           pData?.followers || 
           0;
 
-        // 👈 FIX 3: Safety log if it's still 0
         if (followers === 0) {
           console.warn(`⚠️ [IG API] Profile fetched, but followers is 0. Raw Data Snippet:`, JSON.stringify(pData).slice(0, 200));
         }
@@ -111,17 +108,25 @@ export async function getInstagramMetadata(reelUrl) {
         supplementalViews = matchingReel?.node?.media?.play_count || matchingReel?.node?.media?.view_count || 0;
       }
 
-      // Save valid data blocks to cache
       creatorCache.set(username, { followers, reels, timestamp: now });
     }
 
-    // 3. WIDE-NET METRIC EXTRACTION
-    const caption = media?.meta?.title || "";
-    const hashtags = caption.match(/#\w+/g) || [];
+    // 3. WIDE-NET METRIC EXTRACTION (UPDATED FOR HASHTAGS)
+    
+    // 👈 FIX 1: Look in all the places IG might hide the caption text
+    const finalCaption = 
+      media?.caption?.text || 
+      media?.edge_media_to_caption?.edges?.[0]?.node?.text || 
+      media?.meta?.caption || 
+      media?.meta?.title || 
+      media?.title || 
+      "";
+
+    // 👈 FIX 2: Upgraded regex to catch unicode (international) characters and numbers in hashtags
+    const hashtags = finalCaption.match(/#[\p{L}\p{N}_]+/gu) || [];
     
     const rawDuration = media?.video_duration || media?.videoDuration || media?.clips_metadata?.video_duration || 0;
 
-    // Prioritize any concrete view count discovered across payload variants
     const finalViews = media?.play_count || 
                        media?.view_count || 
                        media?.video_view_count || 
@@ -137,7 +142,7 @@ export async function getInstagramMetadata(reelUrl) {
       views: finalViews, 
       duration: rawDuration ? formatInstagramDuration(rawDuration) : "N/A", 
       uploadDate: media?.meta?.takenAt ? new Date(media.meta.takenAt * 1000).toISOString() : null,
-      caption,
+      caption: finalCaption, // 👈 Ensures we save the actual caption to the DB too
       hashtags,
       videoUrl: media?.urls?.[0]?.url || "",
       thumbnail: media?.pictureUrl || "",

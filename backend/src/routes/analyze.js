@@ -70,6 +70,7 @@ router.post("/", async (req, res) => {
         duration: metadataA.duration,
         uploadDate: metadataA.uploadDate,
         engagementRate: engagementA,
+        hashtags: metadataA.hashtags || [], // 👈 ADDED THIS LINE!
       };
     });
 
@@ -87,6 +88,7 @@ router.post("/", async (req, res) => {
         duration: metadataB.duration,
         uploadDate: metadataB.uploadDate,
         engagementRate: engagementB,
+        hashtags: metadataB.hashtags || [], // 👈 ADDED THIS LINE!
       };
     });
 

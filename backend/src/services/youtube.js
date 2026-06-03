@@ -56,17 +56,21 @@ export async function getYoutubeMetadata(url) {
         console.log("Channel fetch failed:", err.message);
       }
 
+      // 👈 FIX 1: Upgraded regex to catch ALL unicode characters in description hashtags
       const description = video.snippet?.description || "";
-      const hashtags = description.match(/#\w+/g) || [];
+      const descHashtags = description.match(/#[\p{L}\p{N}_]+/gu) || [];
 
-      // Removed getSafeTranscript() from here since your analyze.js route 
-      // already fetches it in parallel using transcript.js!
+      // 👈 FIX 2: Grab YouTube's hidden backend tags and format them with a '#'
+      const nativeTags = (video.snippet?.tags || []).map(tag => `#${tag.replace(/\s+/g, '')}`);
+
+      // 👈 FIX 3: Merge both lists and remove duplicates using a Set
+      const combinedHashtags = [...new Set([...descHashtags, ...nativeTags])];
 
       return {
         title: video.snippet?.title || "",
         creator: video.snippet?.channelTitle || "Unknown",
         subscribers,
-        hashtags,
+        hashtags: combinedHashtags, // 👈 Now contains all possible tags
         uploadDate: video.snippet?.publishedAt || null,
         views: Number(video.statistics?.viewCount || 0),
         likes: Number(video.statistics?.likeCount || 0),
