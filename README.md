@@ -9,7 +9,6 @@ More importantly, it features a multi-tenant RAG (Retrieval-Augmented Generation
 I built this with a focus on speed, API resilience, and strict session isolation so multiple users can query the database simultaneously without data bleed.
 
 * **Parallel Fetching Pipeline:** The `/analyze` route resolves YouTube Data (official API), Instagram Data (RapidAPI proxy), and Transcripts concurrently to minimize TTFB (Time to First Byte).
-* **Asynchronous "Proxy Armor":** Instagram data is notoriously hard to scrape. The backend uses an aggressive Stale-While-Revalidate caching pattern. If secondary data (like follower counts) takes too long, the API returns the dashboard instantly and uses **BullMQ** and **Socket.io** to fetch the missing data in the background and push it to the client in real-time.
 * **Local Vector Embeddings:** Instead of paying for OpenAI embeddings, the backend runs `Xenova/all-MiniLM-L6-v2` entirely locally via `@xenova/transformers` (isolated in Node.js Worker Threads) to generate vectors for the transcripts without blocking the main event loop.
 * **Multi-Tenant Vector Storage:** Uses **Qdrant**. Every analysis generates a unique `sessionId` which is injected into the vector metadata. A Qdrant Payload Index ensures lightning-fast retrieval locked specifically to the user's active session.
 * **Context-Aware RAG:** Powered by `gemini-2.5-flash` and LangChain. 
