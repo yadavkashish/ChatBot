@@ -17,7 +17,6 @@ I built this with a focus on speed, API resilience, and strict session isolation
 ## 💻 Tech Stack
 
 * **Framework:** Node.js + Express
-* **Real-time & Queues:** Socket.io, BullMQ
 * **LLM Orchestration:** LangChain (`@langchain/google-genai`, `@langchain/qdrant`)
 * **Embeddings:** HuggingFace Transformers (`@xenova/transformers`)
 * **Vector Database:** Qdrant Cloud
@@ -30,12 +29,10 @@ I built this with a focus on speed, API resilience, and strict session isolation
 When a user submits two URLs:
 1.  Generates a unique `sessionId`.
 2.  Fetches primary metadata and transcripts concurrently.
-3.  Dispatches background jobs (BullMQ) for heavy/flaky tasks (e.g., Instagram follower lookups).
-4.  Chunks the transcript text (1500 chars, 150 overlap).
-5.  Vectorizes the chunks locally using Xenova worker threads.
-6.  Pushes the vectors to Qdrant, tagged with the `sessionId` and payload indexed.
-7.  Returns the structured metadata and the `sessionId` to the React frontend instantly.
-8.  *WebSocket (`socket.io`)* pushes any delayed metadata updates to the frontend once BullMQ finishes.
+3.  Chunks the transcript text (1500 chars, 150 overlap).
+4.  Vectorizes the chunks locally using Xenova worker threads.
+5.  Pushes the vectors to Qdrant, tagged with the `sessionId` and payload indexed.
+6.  Returns the structured metadata and the `sessionId` to the React frontend instantly.
 
 ### 2. The Chat Flow (`POST /api/chat`)
 When a user asks a question:
@@ -69,8 +66,7 @@ QDRANT_API_KEY="your_qdrant_api_key"
 # REST API is for LangChain memory/chat history
 UPSTASH_REDIS_REST_URL="[https://your-upstash-endpoint.upstash.io](https://your-upstash-endpoint.upstash.io)"
 UPSTASH_REDIS_REST_TOKEN="your_upstash_token"
-# TCP URL is for BullMQ Background Workers (must use rediss://)
-UPSTASH_REDIS_URL="rediss://default:your-password@your-endpoint.upstash.io:32451"
+
 
 ## 🛠 Local Setup
 
